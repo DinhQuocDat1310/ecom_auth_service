@@ -1,26 +1,32 @@
-import { lastValueFrom } from 'rxjs';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PassportStrategy } from '@nestjs/passport';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PayloadDTO } from '../dto/auth';
 import { AuthService } from '../auth.service';
+import { Request } from 'express';
 
 @Injectable()
-export class JwtStrategy extends PassportStrategy(Strategy) {
+export class RefreshTokenJwtStrategy extends PassportStrategy(
+  Strategy,
+  'jwt-refresh-token',
+) {
   constructor(private readonly authService: AuthService) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: process.env.JWT_SECRET_KEY,
+      secretOrKey: process.env.REFRESH_TOKEN_JWT_SECRET_KEY,
+      passReqToCallback: true,
     });
   }
 
-  async validate(payload: PayloadDTO) {
+  async validate(req: Request, payload: PayloadDTO) {
     const user = await this.authService.getUserByEmailorPhonenumber(
       payload.username,
     );
-    const userAsPromise = await lastValueFrom(user);
-    if (!userAsPromise) throw new UnauthorizedException();
-    return userAsPromise;
+    if (!user) throw new UnauthorizedException();
+    return {
+      ...user,
+      refreshToken: req.get('Authorization').replace('Bearer', '').trim(),
+    };
   }
 }
