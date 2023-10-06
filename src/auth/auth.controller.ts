@@ -1,4 +1,3 @@
-import { GoogleAuthGuard } from './guards/google-oauth.guard';
 import {
   Controller,
   UseGuards,
@@ -7,6 +6,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Body,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LocalAuthGuard } from './guards/local-auth.guard';
@@ -20,8 +20,15 @@ import {
 } from '@nestjs/microservices';
 import { RabbitMQService } from 'src/libs/common/src';
 import { RefreshJwtAuthGuard } from './guards/jwt-refresh-auth.guard';
-import { ApiTags, ApiBearerAuth, ApiBody } from '@nestjs/swagger';
-import { LoginUserDTO, RequestUser } from './dto/auth';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiBody,
+  ApiCreatedResponse,
+  ApiBadRequestResponse,
+  ApiOperation,
+} from '@nestjs/swagger';
+import { LoginUserDTO, RequestUser, TokenGoogle } from './dto/auth';
 @Controller('auth')
 @ApiTags('Auth')
 export class AuthController {
@@ -37,6 +44,7 @@ export class AuthController {
   async login(@Request() userRequest: RequestUser) {
     return this.authService.login(userRequest.user);
   }
+
   @ApiBearerAuth('access-token')
   @UseGuards(AccessJwtAuthGuard)
   @Post('/logout')
@@ -73,16 +81,24 @@ export class AuthController {
     return user;
   }
 
-  @Get('/google')
-  @UseGuards(GoogleAuthGuard)
-  async googleAuth() {
-    return;
+  @Post('salesman/login/google')
+  @ApiBody({ type: TokenGoogle })
+  @ApiCreatedResponse({ description: 'Successful' })
+  @ApiBadRequestResponse({ description: 'Login google failed' })
+  @ApiOperation({ summary: 'Salesman Login with Google' })
+  async salesmanLoginGoogle(@Body() tokenGoogle: TokenGoogle): Promise<string> {
+    return await this.authService.salesmanLoginGoogle(tokenGoogle);
   }
 
-  @Get('/google/redirect')
-  @UseGuards(GoogleAuthGuard)
-  async googleAuthRedirect(@Request() req: any) {
-    return await this.authService.googleLogin(req);
+  @Post('purchaser/login/google')
+  @ApiBody({ type: TokenGoogle })
+  @ApiCreatedResponse({ description: 'Successful' })
+  @ApiBadRequestResponse({ description: 'Login google failed' })
+  @ApiOperation({ summary: 'Purchaser Login with Google' })
+  async purchaserLoginGoogle(
+    @Body() tokenGoogle: TokenGoogle,
+  ): Promise<string> {
+    return await this.authService.purchaserLoginGoogle(tokenGoogle);
   }
 
   @UseGuards(AccessJwtAuthGuard)

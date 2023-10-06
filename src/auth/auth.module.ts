@@ -11,7 +11,6 @@ import { ConfigService } from '@nestjs/config';
 import { AccessTokenJwtStrategy } from './strategies/access-token-jwt.strategy';
 import { PrismaService } from 'src/prisma/service';
 import { RefreshTokenJwtStrategy } from './strategies/refresh-token-jwt.strategy';
-import { GoogleStrategy } from './strategies/google-oauth.strategy';
 
 @Module({
   imports: [
@@ -28,7 +27,6 @@ import { GoogleStrategy } from './strategies/google-oauth.strategy';
     LocalStrategy,
     RefreshTokenJwtStrategy,
     AccessTokenJwtStrategy,
-    GoogleStrategy,
     ConfigService,
     PrismaService,
   ],

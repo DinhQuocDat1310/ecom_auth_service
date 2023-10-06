@@ -4,14 +4,22 @@ import {
   Inject,
   InternalServerErrorException,
   UnauthorizedException,
+  BadRequestException,
 } from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
-import { GOOGLE_PROVIDER, USER_SERVICE } from './constants/service';
+import {
+  EMAIL_VERIFIED,
+  GOOGLE_PROVIDER,
+  PURCHASER_ROLE,
+  SALESMAN_ROLE,
+  USER_SERVICE,
+} from './constants/service';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from 'src/prisma/service';
 import { ConfigService } from '@nestjs/config';
-import { Tokens } from './dto/auth';
+import { TokenGoogle, Tokens } from './dto/auth';
 import { hash, compare } from 'bcrypt';
+import { LoginTicket, OAuth2Client } from 'google-auth-library';
 
 @Injectable()
 export class AuthService {
@@ -34,26 +42,12 @@ export class AuthService {
 
   saveUserCreatedWithToken = async (dataUser: any): Promise<any> => {
     const hashedRefreshToken = await hash(dataUser.hashedRefreshToken, 10);
-    const existedUserId = await this.prismaService.auth.findUnique({
-      where: {
+    return await this.prismaService.auth.create({
+      data: {
         userId: dataUser.id,
+        hashedRefreshToken,
       },
     });
-    return existedUserId
-      ? await this.prismaService.auth.update({
-          data: {
-            hashedRefreshToken,
-          },
-          where: {
-            userId: dataUser.id,
-          },
-        })
-      : await this.prismaService.auth.create({
-          data: {
-            userId: dataUser.id,
-            hashedRefreshToken,
-          },
-        });
   };
 
   login = async (user: any): Promise<Tokens> => {
@@ -107,24 +101,69 @@ export class AuthService {
       user.hashedRefreshToken,
     );
     if (!compareRefreshToken) throw new UnauthorizedException();
+    userData['is_refresh'] = true;
     const tokens: Tokens = await this.getTokens(userData);
-    if (tokens) {
-      userData['hashedRefreshToken'] = tokens.refreshToken;
-      await this.saveUserCreatedWithToken(userData);
-    }
+    if (tokens) userData['hashedRefreshToken'] = tokens.refreshToken;
     return tokens;
   };
 
-  googleLogin = async (req: any) => {
-    if (!req.user) throw new UnauthorizedException();
+  salesmanLoginGoogle = async (token: TokenGoogle): Promise<string> => {
     try {
-      if (req.user.provider.toLowerCase() === GOOGLE_PROVIDER)
-        return {
-          message: 'User information from Google',
-          user: req.user,
-        };
+      const googleClientID: string = this.configService.get('GOOGLE_CLIENT_ID');
+      const googleSecretKey: string =
+        this.configService.get('GOOGLE_SECRET_KEY');
+      const clientOAuth: OAuth2Client = new OAuth2Client(
+        googleClientID,
+        googleSecretKey,
+      );
+      const ticket: LoginTicket = await clientOAuth.verifyIdToken({
+        idToken: token.oneTimeToken,
+        audience: googleClientID,
+      });
+      const { name, picture, email } = ticket.getPayload();
+      const user = {
+        username: name,
+        avatar: picture,
+        email,
+        provider: GOOGLE_PROVIDER,
+        status: EMAIL_VERIFIED,
+        role: SALESMAN_ROLE,
+      };
+      return await lastValueFrom(
+        this.userClient.send('create_user_login_google', user),
+      );
     } catch (error) {
-      throw new UnauthorizedException(error.message);
+      throw new BadRequestException(error.message);
+    }
+  };
+
+  purchaserLoginGoogle = async (token: TokenGoogle): Promise<string> => {
+    try {
+      const googleClientID: string = this.configService.get('GOOGLE_CLIENT_ID');
+      const googleSecretKey: string =
+        this.configService.get('GOOGLE_SECRET_KEY');
+      const clientOAuth: OAuth2Client = new OAuth2Client(
+        googleClientID,
+        googleSecretKey,
+      );
+      const ticket: LoginTicket = await clientOAuth.verifyIdToken({
+        idToken: token.oneTimeToken,
+        audience: googleClientID,
+      });
+      const { name, picture, email } = ticket.getPayload();
+      const user = {
+        username: name,
+        avatar: picture,
+        role: PURCHASER_ROLE,
+        email,
+        provider: GOOGLE_PROVIDER,
+        status: EMAIL_VERIFIED,
+      };
+      return await lastValueFrom(
+        this.userClient.send('create_user_login_google', user),
+      );
+    } catch (error) {
+      throw new BadRequestException(error.message);
     }
   };
 
@@ -133,17 +172,21 @@ export class AuthService {
       username: user.email ? user.email : user.phoneNumber,
       sub: user.id,
     };
+    const generateTokenType = [];
+    const accessTokenType = this.jwtService.signAsync(payload, {
+      secret: this.configService.get('ACCESS_TOKEN_JWT_SECRET_KEY'),
+      expiresIn: 60 * 60 * 24, // 24 hours
+    });
+    const refreshTokenType = this.jwtService.signAsync(payload, {
+      secret: this.configService.get('REFRESH_TOKEN_JWT_SECRET_KEY'),
+      expiresIn: 60 * 60 * 24 * 7, //7 days
+    });
 
-    const [accessToken, refreshToken] = await Promise.all([
-      this.jwtService.signAsync(payload, {
-        secret: this.configService.get('ACCESS_TOKEN_JWT_SECRET_KEY'),
-        expiresIn: 60 * 60 * 24, // 24 hours
-      }),
-      this.jwtService.signAsync(payload, {
-        secret: this.configService.get('REFRESH_TOKEN_JWT_SECRET_KEY'),
-        expiresIn: 60 * 60 * 24 * 7, //7 days
-      }),
-    ]);
+    user['is_refresh']
+      ? generateTokenType.push(accessTokenType)
+      : generateTokenType.push(accessTokenType, refreshTokenType);
+
+    const [accessToken, refreshToken] = await Promise.all(generateTokenType);
     return {
       accessToken,
       refreshToken,

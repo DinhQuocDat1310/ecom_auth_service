@@ -3,7 +3,7 @@ export class LoginUserDTO {
   @ApiProperty({ type: String, description: 'email or phoneNumber' })
   username: string;
   @ApiProperty({ type: String, description: 'password' })
-  password: string;
+  password?: string;
 }
 
 export class PayloadDTO {
@@ -14,6 +14,11 @@ export class PayloadDTO {
 export class Tokens {
   accessToken: string;
   refreshToken: string;
+}
+
+export class TokenGoogle {
+  @ApiProperty({ type: String, description: 'One time token google' })
+  oneTimeToken: string;
 }
 
 export class RequestUser {
@@ -32,5 +37,6 @@ export class UserSignIn {
   dateOfBirth: Date;
   avatar: string;
   isActive: boolean;
+  provider: string;
   salesmanId: string;
 }
