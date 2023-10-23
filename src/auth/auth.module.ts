@@ -3,7 +3,7 @@ import { Module } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { RabbitMQService } from 'src/libs/common/src';
-import { USER_SERVICE } from './constants/service';
+import { NOTIFICATION_SERVICE, USER_SERVICE } from './constants/service';
 import { PassportModule } from '@nestjs/passport';
 import { LocalStrategy } from './strategies/local.strategy';
 import { JwtModule } from '@nestjs/jwt';
@@ -16,6 +16,9 @@ import { RefreshTokenJwtStrategy } from './strategies/refresh-token-jwt.strategy
   imports: [
     RabbitMQModule.register({
       name: USER_SERVICE,
+    }),
+    RabbitMQModule.register({
+      name: NOTIFICATION_SERVICE,
     }),
     PassportModule,
     JwtModule.register({}),

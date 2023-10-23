@@ -17,7 +17,7 @@ async function bootstrap() {
     )
     .build();
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api', app, document);
+  SwaggerModule.setup('api/auth', app, document);
   app.useGlobalPipes(new ValidationPipe());
   const rmqService = app.get<RabbitMQService>(RabbitMQService);
   app.connectMicroservice(rmqService.getOptions('AUTH'));

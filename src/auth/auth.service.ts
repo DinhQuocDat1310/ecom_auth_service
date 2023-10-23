@@ -10,6 +10,8 @@ import { ClientProxy } from '@nestjs/microservices';
 import {
   EMAIL_VERIFIED,
   GOOGLE_PROVIDER,
+  NOTIFICATION_LOGIN_DIFF_DEVICE,
+  NOTIFICATION_SERVICE,
   PURCHASER_ROLE,
   SALESMAN_ROLE,
   USER_SERVICE,
@@ -25,6 +27,8 @@ import { LoginTicket, OAuth2Client } from 'google-auth-library';
 export class AuthService {
   constructor(
     @Inject(USER_SERVICE) private readonly userClient: ClientProxy,
+    @Inject(NOTIFICATION_SERVICE)
+    private readonly notificationClient: ClientProxy,
     private readonly prismaService: PrismaService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
@@ -41,13 +45,27 @@ export class AuthService {
   };
 
   saveUserCreatedWithToken = async (dataUser: any): Promise<any> => {
-    const hashedRefreshToken = await hash(dataUser.hashedRefreshToken, 10);
-    return await this.prismaService.auth.create({
-      data: {
+    const user = await this.prismaService.auth.findFirst({
+      where: {
         userId: dataUser.id,
-        hashedRefreshToken,
       },
     });
+    const hashedRefreshToken = await hash(dataUser.hashedRefreshToken, 10);
+    return user
+      ? await this.prismaService.auth.update({
+          where: {
+            userId: dataUser.id,
+          },
+          data: {
+            hashedRefreshToken,
+          },
+        })
+      : await this.prismaService.auth.create({
+          data: {
+            userId: dataUser.id,
+            hashedRefreshToken,
+          },
+        });
   };
 
   login = async (user: any): Promise<Tokens> => {
@@ -56,6 +74,11 @@ export class AuthService {
       if (tokens) {
         user['hashedRefreshToken'] = tokens.refreshToken;
         await this.saveUserCreatedWithToken(user);
+        //[Login Diff Device] - Push notification
+        user['notify_type'] = NOTIFICATION_LOGIN_DIFF_DEVICE;
+        await lastValueFrom(
+          this.notificationClient.emit('send_notification', user),
+        );
       }
       return tokens;
     } catch (error) {
